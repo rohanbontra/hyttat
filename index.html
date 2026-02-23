@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #000000; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+      .card { background: #1f2937; width: 100%; max-width: 500px; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); text-align: center; position: relative; }
+      .header-text { font-family: "Fedra Bold", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: bold; font-size: 28px; color: #f3f4f6; margin-bottom: 30px; margin-top: 5px; }
+      .logo { height: 40px; margin-bottom: 20px; object-fit: contain; }
+      .cam-toggle { position: absolute; top: 165px; right: 30px; z-index: 10; font-size: 18px; cursor: pointer; background: transparent; border: none; box-shadow: none; width: 36px; height: 36px; display: none; align-items: center; justify-content: center; }
+      .cam-toggle:active { transform: scale(0.85); background: transparent; }
+      #update-banner { display: none; position: fixed; top: 20px; z-index: 1000; background-color: #064e3b; border: 2px solid #34d399; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.5); cursor: default; animation: slideDown 0.5s ease; }
+      #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-bottom: 20px; }
+
+      /* OVERLAY POPUP */
+      #status-box { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; box-sizing: border-box; padding: 30px; border-radius: 16px; z-index: 100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); animation: popInCenter 0.3s ease; }
+      .close-btn { position: absolute; top: 10px; right: 15px; font-size: 28px; font-weight: bold; cursor: pointer; opacity: 0.7; line-height: 1; }
+      .close-btn:hover { opacity: 1; }
+      .success-present { background-color: #064e3b; border: 3px solid #34d399; color: #ffffff; }
+      .error   { background-color: #7f1d1d; border: 3px solid #f87171; color: #ffffff; }
+      .warning { background-color: #78350f; border: 3px solid #fbbf24; color: #ffffff; }
+      h2 { margin: 0 0 10px 0; font-size: 32px; font-weight: 800; }
+      p  { margin: 0; font-size: 22px; font-weight: 600; }
+
+      /* BUTTONS */
+      .btn { background-color: #374151; color: white; border: 1px solid #4b5563; padding: 18px 32px; font-size: 18px; font-weight: 600; border-radius: 50px; cursor: pointer; margin-top: 10px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+      .btn:disabled { background-color: #4b5563; color: #9ca3af; cursor: not-allowed; border: none; }
+
+      @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      @keyframes popInCenter { from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+      #reader.front-cam video { transform: scaleX(-1) !important; }
+    </style>
+  </head>
+  <body>
+    <div id="update-banner">Schedule has been updated ✅</div>
+
+    <div class="card">
+      <div class="header-text">Sadhana Upgrade - 2026</div>
+      <img src="https://lh3.googleusercontent.com/d/1debGmOVxmYmA8EqaOYLKojnKlSzEXOGE=w300" class="logo">
+
+      <div class="cam-toggle" onclick="switchCamera()">🔄</div>
+      <div id="reader"></div>
+
+      <div id="status-box">
+        <div class="close-btn" onclick="closePopup()">×</div>
+        <h2 id="msg-title"></h2>
+        <p id="msg-desc"></p>
+      </div>
+
+      <button id="start-btn" class="btn" onclick="startScanner()" disabled>⏳ Loading...</button>
+    </div>
+
+    <script>
+      // ─────────────────────────────────────────────
+      // !! REPLACE THIS WITH YOUR /exec URL !!
+      // Deploy > Manage Deployments > copy the Web App URL
+      // ─────────────────────────────────────────────
+      const EXEC_URL = "https://script.google.com/macros/s/AKfycbxiMAm8bP-kerDL8DIuCf39WxDXfxrql61M54s6o77jPB7qhf9H9x_SVpyGgVZ21DPPcQ/exec";
+
+      // ─────────────────────────────────────────────
+      // STATE
+      // ─────────────────────────────────────────────
+      let participantDB = {};
+      let todaySessions = [];
+
+      const localScannedIds = new Set();
+      let html5QrcodeScanner = null;
+      let isScanning = false;
+      let isScannerRunning = false;
+      let currentFacingMode = "environment";
+      let statusTimer = null;
+
+      // ─────────────────────────────────────────────
+      // STARTUP: load participants + schedule via fetch
+      // ─────────────────────────────────────────────
+      function callBackend(payload) {
+        return fetch(EXEC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).then(r => r.json());
+      }
+
+      // Load initial data on page load
+      callBackend({ action: "getInitialData" }).then(data => {
+        participantDB = data.participantData;
+        todaySessions = data.scheduleData;
+      }).catch(err => console.error("Failed to load initial data:", err));
+
+      // Wait for QR library to load, then enable button
+      const checkLibrary = setInterval(() => {
+        if (typeof Html5Qrcode !== "undefined") {
+          clearInterval(checkLibrary);
+          const btn = document.getElementById('start-btn');
+          if (btn) {
+            btn.innerText = "📷 START LIVE SCANNER";
+            btn.disabled = false;
+          }
+        }
+      }, 500);
+
+      // Poll for schedule changes every 15 seconds
+      setInterval(() => {
+        callBackend({ action: "getLatestSchedule" })
+          .then(checkForChanges)
+          .catch(err => console.warn("Schedule poll failed:", err));
+      }, 15000);
+
+      function checkForChanges(newSchedule) {
+        const currentSig = todaySessions.map(s => s.id + s.date + s.name + s.startTime + s.durationHours + s.offsetMinutes).join("|");
+        const newSig = newSchedule.map(s => s.id + s.date + s.name + s.startTime + s.durationHours + s.offsetMinutes).join("|");
+        if (currentSig !== newSig) {
+          todaySessions = newSchedule;
+          const banner = document.getElementById('update-banner');
+          banner.style.display = 'block';
+          setTimeout(() => { banner.style.display = 'none'; }, 3000);
+        }
+      }
+
+      // ─────────────────────────────────────────────
+      // CAMERA
+      // ─────────────────────────────────────────────
+      function switchCamera() {
+        currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+        const btn = document.getElementById('start-btn');
+        if (html5QrcodeScanner && btn.style.display === 'none') {
+          html5QrcodeScanner.stop()
+            .then(() => html5QrcodeScanner.clear())
+            .then(() => {
+              html5QrcodeScanner = null;
+              isScannerRunning = false;
+              startScanner();
+            })
+            .catch(err => console.log("Switch failed", err));
+        }
+      }
+
+      function startScanner() {
+        const btn = document.getElementById('start-btn');
+        btn.innerText = "⏳ Waking Camera...";
+        btn.disabled = true;
+
+        if (!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode("reader");
+
+        const qrboxFunction = function(videoWidth, videoHeight) {
+          const minEdgeSize = Math.min(videoWidth, videoHeight);
+          return { width: Math.floor(minEdgeSize * 0.75), height: Math.floor(minEdgeSize * 0.75) };
+        };
+
+        const config = { fps: 10, qrbox: qrboxFunction };
+
+        // Attempt 1: target camera
+        html5QrcodeScanner.start({ facingMode: currentFacingMode }, config, onScanSuccess)
+          .then(applyCameraUI)
+          .catch(err1 => {
+            console.warn("Attempt 1 Failed:", err1);
+            try { html5QrcodeScanner.clear(); } catch(e) {}
+            html5QrcodeScanner = new Html5Qrcode("reader");
+
+            // Attempt 2: opposite camera
+            let fallbackMode = (currentFacingMode === "environment") ? "user" : "environment";
+            html5QrcodeScanner.start({ facingMode: fallbackMode }, config, onScanSuccess)
+              .then(() => { currentFacingMode = fallbackMode; applyCameraUI(); })
+              .catch(err2 => {
+                console.warn("Attempt 2 Failed:", err2);
+                try { html5QrcodeScanner.clear(); } catch(e) {}
+                html5QrcodeScanner = new Html5Qrcode("reader");
+
+                // Attempt 3: any camera by device ID
+                Html5Qrcode.getCameras().then(devices => {
+                  if (devices && devices.length > 0) {
+                    html5QrcodeScanner.start(devices[0].id, config, onScanSuccess)
+                      .then(applyCameraUI)
+                      .catch(err3 => triggerFinalError(err3));
+                  } else {
+                    triggerFinalError("No physical cameras found.");
+                  }
+                }).catch(err4 => triggerFinalError(err4));
+              });
+          });
+      }
+
+      function applyCameraUI() {
+        document.getElementById('start-btn').style.display = 'none';
+        document.querySelector('.cam-toggle').style.display = 'flex';
+        isScannerRunning = true;
+        const readerDiv = document.getElementById('reader');
+        if (currentFacingMode === "user") {
+          readerDiv.classList.add('front-cam');
+        } else {
+          readerDiv.classList.remove('front-cam');
+        }
+      }
+
+      function triggerFinalError(err) {
+        alert("Browser blocked camera access: " + err + "\n\nPlease ensure permissions are allowed via the settings icon in the URL bar.");
+        const btn = document.getElementById('start-btn');
+        btn.innerText = "📷 START LIVE SCANNER";
+        btn.disabled = false;
+        btn.style.display = 'block';
+      }
+
+      // ─────────────────────────────────────────────
+      // SCAN LOGIC
+      // ─────────────────────────────────────────────
+      function onScanSuccess(decodedText) {
+        if (isScanning) return;
+
+        const cleanId = decodedText.toString().trim();
+        const name = participantDB[cleanId];
+
+        if (!name) {
+          showStatus("Error", "⛔ Invalid ID", "error");
+          pauseAndReset(); return;
+        }
+
+        const sessionStatus = findCurrentSession();
+
+        if (sessionStatus.status === "NONE") {
+          showStatus("Closed", "⛔ Session Closed.", "error");
+          pauseAndReset(); return;
+        }
+        if (sessionStatus.status === "EARLY") {
+          showStatus("Too Early", "⏳ Opens at " + sessionStatus.timeStr, "error");
+          pauseAndReset(); return;
+        }
+
+        const activeSession = sessionStatus.session;
+        const uniqueKey = cleanId + "_" + activeSession.id;
+
+        if (localScannedIds.has(uniqueKey)) {
+          showStatus(name, "⚠️ Already Scanned", "warning");
+          pauseAndReset(); return;
+        }
+
+        isScanning = true;
+        if (html5QrcodeScanner && isScannerRunning) {
+          html5QrcodeScanner.pause();
+        }
+
+        showStatus(name, "✅ Checked In", "success-present");
+        localScannedIds.add(uniqueKey);
+
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(closePopup, 2000);
+
+        // Send scan to backend via fetch
+        callBackend({ action: "processScan", scannedId: cleanId, participantName: name, sessionId: activeSession.id })
+          .then(result => {
+            if (result.status === "warning") {
+              showStatus(name, result.message, "warning");
+              clearTimeout(statusTimer);
+              statusTimer = setTimeout(closePopup, 2000);
+            }
+          })
+          .catch(err => console.error("processScan failed:", err));
+      }
+
+      function findCurrentSession() {
+        const now = new Date();
+        let upcomingTime = null;
+        for (let s of todaySessions) {
+          const startObj = parseTimeString(s.startTime);
+          if (!startObj) continue;
+          const offset = Number(s.offsetMinutes) || 0;
+          const duration = Number(s.durationHours) || 4;
+          const openObj = new Date(startObj.getTime() - (offset * 60000));
+          const endObj  = new Date(startObj.getTime() + (duration * 60 * 60 * 1000));
+
+          if (now >= openObj) {
+            if (now < endObj) return { status: "OPEN", session: s };
+          } else {
+            if (!upcomingTime || openObj < upcomingTime) upcomingTime = openObj;
+          }
+        }
+        if (upcomingTime) {
+          const timeStr = upcomingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return { status: "EARLY", timeStr: timeStr };
+        }
+        return { status: "NONE" };
+      }
+
+      function parseTimeString(timeStr) {
+        if (!timeStr) return null;
+        const d = new Date();
+        const lowerStr = String(timeStr).toLowerCase();
+        if (lowerStr.includes('m')) {
+          const parts = lowerStr.match(/(\d+):(\d+)\s*(am|pm)/);
+          if (parts) {
+            let hours = parseInt(parts[1]);
+            let minutes = parseInt(parts[2]);
+            if (parts[3] === 'pm' && hours < 12) hours += 12;
+            if (parts[3] === 'am' && hours === 12) hours = 0;
+            d.setHours(hours, minutes, 0, 0);
+            return d;
+          }
+        }
+        const parts = String(timeStr).split(':');
+        if (parts.length >= 2) { d.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0); return d; }
+        return null;
+      }
+
+      function pauseAndReset() {
+        isScanning = true;
+        if (html5QrcodeScanner && isScannerRunning) {
+          html5QrcodeScanner.pause();
+        }
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(closePopup, 2000);
+      }
+
+      function closePopup() {
+        document.getElementById('status-box').style.display = 'none';
+        if (isScanning && html5QrcodeScanner && isScannerRunning) {
+          html5QrcodeScanner.resume();
+        }
+        isScanning = false;
+        clearTimeout(statusTimer);
+      }
+
+      function showStatus(title, desc, className) {
+        const box = document.getElementById('status-box');
+        box.className = "";
+        box.classList.add(className);
+        box.style.display = 'block';
+        document.getElementById('msg-title').innerText = title;
+        document.getElementById('msg-desc').innerText = desc;
+      }
+    </script>
+  </body>
+</html>
