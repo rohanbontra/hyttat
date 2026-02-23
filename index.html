@@ -58,13 +58,11 @@
       let statusTimer = null;
 
       // Central fetch helper
+
       function callBackend(payload) {
-        return fetch(EXEC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }).then(r => r.json());
-      }
+  const params = new URLSearchParams(payload).toString();
+  return fetch(EXEC_URL + "?" + params).then(r => r.json());
+}
 
       // Load participants + schedule on page load
       callBackend({ action: "getInitialData" })
