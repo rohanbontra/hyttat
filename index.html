@@ -30,21 +30,17 @@
   document.querySelector('.cam-toggle').style.display = 'flex';
   isScannerRunning = true;
 
-  // Check the actual track to detect front camera (covers laptops with 1 camera)
-  setTimeout(() => {
-    const video = document.querySelector('#reader video');
-    if (video && video.srcObject) {
-      const track = video.srcObject.getVideoTracks()[0];
-      const settings = track ? track.getSettings() : {};
-      const isFront = currentFacingMode === "user" || settings.facingMode === "user" || settings.facingMode === undefined;
-      const readerDiv = document.getElementById('reader');
-      if (isFront) {
-        readerDiv.classList.add('front-cam');
-      } else {
-        readerDiv.classList.remove('front-cam');
-      }
+  Html5Qrcode.getCameras().then(devices => {
+    const readerDiv = document.getElementById('reader');
+    const onlyOneCamera = devices.length <= 1;
+    const isFrontMode = currentFacingMode === "user";
+
+    if (onlyOneCamera || isFrontMode) {
+      readerDiv.classList.add('front-cam');
+    } else {
+      readerDiv.classList.remove('front-cam');
     }
-  }, 300);
+  });
 }
     #reader.front-cam video { transform: scaleX(-1) !important; }
     
