@@ -24,7 +24,26 @@
       .btn:disabled { background-color: #4b5563; color: #9ca3af; cursor: not-allowed; border: none; }
       @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
       @keyframes popInCenter { from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
-      #reader.front-cam { transform: scaleX(1); }
+      
+      function applyCameraUI() {
+  document.getElementById('start-btn').style.display = 'none';
+  document.querySelector('.cam-toggle').style.display = 'flex';
+  isScannerRunning = true;
+  const r = document.getElementById('reader');
+
+  if (currentFacingMode === "user") {
+    r.classList.add('front-cam');
+    // Directly target the video element once it exists
+    setTimeout(() => {
+      const video = r.querySelector('video');
+      if (video) video.style.transform = 'scaleX(-1)';
+    }, 500);
+  } else {
+    r.classList.remove('front-cam');
+    const video = r.querySelector('video');
+    if (video) video.style.transform = 'scaleX(1)';
+  }
+}
     </style>
   </head>
   <body>
