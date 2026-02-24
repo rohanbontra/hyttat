@@ -25,6 +25,7 @@
       @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
       @keyframes popInCenter { from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
       #reader.front-cam video { transform: scaleX(-1) !important; }
+      #reader.front-cam canvas { transform: scaleX(-1) !important; }
     </style>
   </head>
   <body>
@@ -119,10 +120,18 @@
         if (!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode("reader");
 
         const qrboxFunction = (w, h) => {
-          const s = Math.floor(Math.min(w, h) * 0.75);
-          return { width: s, height: s };
+        const s = Math.floor(Math.min(w, h) * 0.85);
+        return { width: s, height: s };
         };
-        const config = { fps: 10, qrbox: qrboxFunction };
+        const config = {
+          fps: 15,
+          qrbox: qrboxFunction,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+              },
+          aspectRatio: 1.0,
+          formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+          };
 
         html5QrcodeScanner.start({ facingMode: currentFacingMode }, config, onScanSuccess)
           .then(applyCameraUI)
