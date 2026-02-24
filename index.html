@@ -44,6 +44,8 @@
     if (video) video.style.transform = 'scaleX(1)';
   }
 }
+    #reader.front-cam video { transform: scaleX(-1) !important; }
+    
     </style>
   </head>
   <body>
@@ -151,7 +153,13 @@
           formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
           };
 
-        html5QrcodeScanner.start({ facingMode: currentFacingMode }, config, onScanSuccess)
+        if (currentFacingMode === "user") {
+        document.getElementById('reader').classList.add('front-cam');
+        } else {
+          document.getElementById('reader').classList.remove('front-cam');
+            }
+
+html5QrcodeScanner.start({ facingMode: currentFacingMode }, config, onScanSuccess)
           .then(applyCameraUI)
           .catch(err1 => {
             console.warn("Attempt 1 Failed:", err1);
@@ -180,11 +188,9 @@
       }
 
       function applyCameraUI() {
-        document.getElementById('start-btn').style.display = 'none';
-        document.querySelector('.cam-toggle').style.display = 'flex';
-        isScannerRunning = true;
-        const r = document.getElementById('reader');
-        currentFacingMode === "user" ? r.classList.add('front-cam') : r.classList.remove('front-cam');
+      document.getElementById('start-btn').style.display = 'none';
+      document.querySelector('.cam-toggle').style.display = 'flex';
+      isScannerRunning = true;
       }
 
       function triggerFinalError(err) {
